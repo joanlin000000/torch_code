@@ -51,17 +51,17 @@ def train(model, train_loader, train_images, e, obs_len, pred_len, batch_size, p
 			# Create Heatmaps for past and ground-truth future trajectories
 			_, _, H, W = scene_image.shape  # image shape
 
-			observed = trajectory[i:i+batch_size, :obs_len, :].reshape(-1, 2).cpu().numpy()
+			observed = trajectory[i:i+batch_size, :obs_len, :].reshape(-1, 2).cpu().numpy() # .cpu()
 			observed_map = get_patch(input_template, observed, H, W)
 			observed_map = torch.stack(observed_map).reshape([-1, obs_len, H, W])
 
 			gt_future = trajectory[i:i + batch_size, obs_len:].to(device)
-			gt_future_map = get_patch(gt_template, gt_future.reshape(-1, 2).cpu().numpy(), H, W)
+			gt_future_map = get_patch(gt_template, gt_future.reshape(-1, 2).cpu().numpy(), H, W) # .cpu()
 			gt_future_map = torch.stack(gt_future_map).reshape([-1, pred_len, H, W])
 
-			gt_waypoints = gt_future[:, params['waypoints']]
-			gt_waypoint_map = get_patch(input_template, gt_waypoints.reshape(-1, 2).cpu().numpy(), H, W)
-			gt_waypoint_map = torch.stack(gt_waypoint_map).reshape([-1, gt_waypoints.shape[1], H, W])
+			gt_waypoints = gt_future[:, 0] # params['waypoints']
+			gt_waypoint_map = get_patch(input_template, gt_waypoints.reshape(-1, 2).cpu().numpy(), H, W) # .cpu()
+			gt_waypoint_map = torch.stack(gt_waypoint_map).reshape([-1, 1, H, W]) # gt_waypoints.shape[1],
 
 			# Concatenate heatmap and semantic map
 			semantic_map = scene_image.expand(observed_map.shape[0], -1, -1, -1)  # expand to match heatmap size
