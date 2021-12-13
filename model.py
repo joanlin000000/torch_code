@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import numpy as np
+import pandas as pd
 
 from util.softargmax import SoftArgmax2D, create_meshgrid
 from util.preprocessing import augment_data, create_images_dict
@@ -13,6 +14,7 @@ from util.dataloader import SceneDataset, scene_collate
 # from tests import evaluate
 from test_ev import tests
 from train import train
+import cv2
 
 
 class YNetEncoder(nn.Module):
@@ -262,7 +264,6 @@ class YNet:
 		# Load train images and augment train data and images
         df_train, train_images = augment_data(train_data, image_path=train_image_path, image_file=image_file_name,
 											  seg_mask=seg_mask)
-
 		# Load val scene images
         val_images = create_images_dict(val_data, image_path=val_image_path, image_file=image_file_name)
 
@@ -300,25 +301,26 @@ class YNet:
         gt_template = create_gaussian_heatmap_template(size=size, kernlen=params['kernlen'], nsig=params['nsig'], normalize=False)
         gt_template = torch.Tensor(gt_template).to(device)
 
-        best_test_ADE = 99999999999999
-
+        best_test_ADE = 10
+        best_test_FDE = 120
         self.train_ADE = []
         self.train_FDE = []
         self.val_ADE = []
         self.val_FDE = []
 
         print('Start training')
-        for e in tqdm(range(10), desc='Epoch'): #epoch
+        epoch = 20
+        for e in tqdm(range(epoch), desc='Epoch'): #epoch
             train_ADE, train_FDE, train_loss = train(model, train_loader, train_images, e, obs_len, pred_len,
-													 batch_size, params, gt_template, device,
-													 input_template, optimizer, criterion, dataset_name, self.homo_mat)
+													 batch_size, params, gt_template, device,epoch,
+													 input_template, optimizer, criterion)
             self.train_ADE.append(train_ADE)
             self.train_FDE.append(train_FDE)
 
 			# For faster inference, we don't use TTST and CWS here, only for the test set evaluation
             val_ADE, val_FDE, val_loss = train(model, val_loader, val_images, e, obs_len, pred_len,
-													 batch_size, params, gt_template, device,
-													 input_template, optimizer, criterion, dataset_name, self.homo_mat)
+													 batch_size, params, gt_template, device,epoch,
+													 input_template, optimizer, criterion)
 # 			val_ADE, val_FDE = evaluate(model, val_loader, val_images, num_goals, num_traj,
 # 										obs_len=obs_len, batch_size=batch_size,
 # 										device=device, input_template=input_template,
@@ -329,12 +331,25 @@ class YNet:
             print(f'Epoch {e}: \nVal ADE: {val_ADE} \nVal FDE: {val_FDE}')
             self.val_ADE.append(val_ADE)
             self.val_FDE.append(val_FDE)
-
-            if val_ADE < best_test_ADE:
-                print(f'Best Epoch {e}: \nVal ADE: {val_ADE} \nVal FDE: {val_FDE}')
-                torch.save(model.state_dict(), './ynet_additional_files/pretrained_models/' + experiment_name + '_weights.pt')
-                best_test_ADE = val_ADE
-
+            torch.save(model.state_dict(), f'./result/weight/{experiment_name}_epoch{e}_weights.pt')
+            if val_FDE < best_test_FDE:
+                print(f'Best Epoch {e}: \nVal FDE: {val_ADE} \nVal FDE: {val_FDE}')
+                best_test_FDE = val_FDE
+                torch.save(model.state_dict(), f'./result/weight/{experiment_name}_epoch{e}_best_weights.pt')
+            
+                
+        train_result = pd.DataFrame(
+            {'train_ADE': self.train_ADE,
+             'train_FDE': self.train_FDE,
+             'val_ADE': self.val_ADE,
+             'val_FDE': self.val_FDE,
+             'best_ADE': best_test_ADE
+             }) 
+        import os
+        path = f'./result/train/{self.train_ADE[-1]}_{epoch}'
+        if not os.path.isdir(path):
+            os.mkdir(path)
+        train_result.to_csv(f'./result/train/{self.train_ADE[-1]}_{epoch}/train_{self.train_ADE[-1]}_{epoch}.csv')
     def evaluate(self, data, params, image_path, batch_size=1, num_goals=1, num_traj=1, rounds=1, device=None, dataset_name=None):
         """
 		Val function
@@ -407,18 +422,26 @@ class YNet:
         self.eval_FDE = []
 
         print('Start testing')
-        for e in tqdm(range(3), desc='Round'):
+        for e in tqdm(range(5), desc='Round'):
             test_ADE, test_FDE, test_loss = tests(model, test_loader, test_images, e=e, obs_len=1, pred_len=1, batch_size=1,
                                                   params=params, gt_template=gt_template, device=torch.device('cuda:0'),
-                                                  input_template=input_template, optimizer=optimizer, 
+                                                  input_template=input_template, optimizer=optimizer, epoch = 5,
                                                   criterion=criterion, dataset_name='test', homo_mat='test')
             print(f'Round {e}: \nTest ADE: {test_ADE} \nTest FDE: {test_FDE}')
 
             self.eval_ADE.append(test_ADE)
             self.eval_FDE.append(test_FDE)
-
+        epoch=20
         print(f'\n\nAverage performance over {rounds} rounds: \nTest ADE: {sum(self.eval_ADE) / len(self.eval_ADE)} \nTest FDE: {sum(self.eval_FDE) / len(self.eval_FDE)}')
-
+        test_result = pd.DataFrame(
+            {'train_ADE': self.eval_ADE,
+             'train_FDE': self.eval_FDE
+             }) 
+        import os
+        path = f'./result/test/{self.eval_ADE[-1]}_{epoch}'
+        if not os.path.isdir(path):
+            os.mkdir(path)
+        test_result.to_csv(f'./result/test/{self.eval_ADE[-1]}_{epoch}/{self.eval_ADE[-1]}_{epoch}.csv')
 
     def load(self, path):
         print(self.model.load_state_dict(torch.load(path)))

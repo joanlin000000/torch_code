@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 from util.image_utils import get_patch, image2world
 
-def tests(model, test_loader, test_images, e, obs_len, pred_len, batch_size, params, gt_template, device, input_template, optimizer, criterion, dataset_name, homo_mat):
+def tests(model, test_loader, test_images, e, obs_len, pred_len, batch_size, params, gt_template, device,epoch, input_template, optimizer, criterion, dataset_name, homo_mat):
     """
 	Run training for one epoch
 
@@ -25,6 +25,7 @@ def tests(model, test_loader, test_images, e, obs_len, pred_len, batch_size, par
     test_FDE = []
     # model.train()
     counter = 0
+    
 	# outer loop, for loop over each scene as scenes have different image size and to calculate segmentation only once
     for batch, (trajectory, meta, scene) in enumerate(test_loader):
 		# Stop training after 25 batches to increase evaluation frequency
@@ -48,6 +49,10 @@ def tests(model, test_loader, test_images, e, obs_len, pred_len, batch_size, par
             # model.train()
 
 		# inner loop, for each trajectory in the scene
+        final_x = []
+        final_y = []
+        pred_x = []
+        pred_y = []
         for i in range(0, len(trajectory), batch_size):
             if e >= params['unfreeze']:
                 scene_image = test_images[scene].to(device).unsqueeze(0)
@@ -96,7 +101,29 @@ def tests(model, test_loader, test_images, e, obs_len, pred_len, batch_size, par
 				# Evaluate using Softargmax, not a very exact evaluation but a lot faster than full prediction
                 pred_traj = model.softargmax(pred_traj_map)
                 pred_goal = model.softargmax(pred_goal_map[:, -1:])
-
+                import cv2
+                import matplotlib.pyplot as plt
+                import numpy as np
+                image = np.array(test_images[scene].permute(1, 2, 0))[:, :, [0, 0, 0]] # 210 120 021 012 201 102 [:, :, [0, 2, 1]]
+                # cv2.imshow('My Image', image)
+                plt.imshow(image)
+                tr = pred_traj.tolist()
+                gt = gt_future.tolist()
+                gt_rev = gt_future[:, -1:].tolist()
+                tr_rev = pred_goal[:, -1:].tolist()
+                c = 1
+                # print(gt)
+                plt.plot(gt[0][0][0],gt[0][0][1],'bs', label='future_traj', linewidth=3)
+                plt.plot(tr[0][0][0],tr[0][0][1], 'rx', label = 'pred_traj', linewidth=3)
+                plt.plot(gt_rev[0][0][0],gt_rev[0][0][1],'go', label = 'final', linewidth=3)
+                plt.plot(tr_rev[0][0][0],tr_rev[0][0][1], 'ys', label = 'pred_final', linewidth=3)
+                # plt.savefig(f'./result/img/{c}{epoch}.jpg')
+                plt.show()
+                final_x.append(gt_rev[0][0][0])
+                final_y.append(gt_rev[0][0][1])
+                pred_x.append(tr_rev[0][0][0])
+                pred_y.append(tr_rev[0][0][1])
+                c += 1
 				# converts ETH/UCY pixel coordinates back into world-coordinates
 				# if dataset_name == 'eth':
 				# 	pred_goal = image2world(pred_goal, scene, homo_mat, params)
@@ -105,7 +132,12 @@ def tests(model, test_loader, test_images, e, obs_len, pred_len, batch_size, par
 
                 test_ADE.append(((((gt_future - pred_traj) / params['resize']) ** 2).sum(dim=2) ** 0.5).mean(dim=1))
                 test_FDE.append(((((gt_future[:, -1:] - pred_goal[:, -1:]) / params['resize']) ** 2).sum(dim=2) ** 0.5).mean(dim=1))
-
+        import pandas as pd
+        test = pd.DataFrame({'final_x': final_x,
+                             'final_y': final_y,
+                             'pred_x':pred_x,
+                             'pred_y':pred_y}) 
+        test.to_csv('./result/test_results_v1.csv')
     test_ADE = torch.cat(test_ADE).mean()
     test_FDE = torch.cat(test_FDE).mean()
 
