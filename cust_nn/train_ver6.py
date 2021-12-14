@@ -315,7 +315,7 @@ def train_epocs(model, optimizer, train_dl, val_dl,lr, epochs=10,C=1000):
     val_losses = []
     idx = 0
     for i in range(epochs):
-        print('epoch:',i+1)
+        print('epoch:',i+71)
         model.train()
         total = 0
         sum_loss = 0
@@ -345,7 +345,7 @@ def train_epocs(model, optimizer, train_dl, val_dl,lr, epochs=10,C=1000):
         val_loss, val_acc = val_metrics(model, valid_dl, C)
         train_losses.append(train_loss)
         val_losses.append(val_loss)
-        PATH = f'./model_{lr}_{i+28}_ver4.pth'
+        PATH = f'./model_{lr}_{i+71}.pth'
         torch.save(model.state_dict(), PATH)
         print('weight saved')
         print("train_loss %.3f val_loss %.3f val_class_acc %.3f" % (train_loss, val_loss, val_acc))
@@ -356,7 +356,7 @@ def train_epocs(model, optimizer, train_dl, val_dl,lr, epochs=10,C=1000):
     total_list.to_csv(f'result_11_50ep_{lr}.csv')
     return sum_loss/total
 
-lr = 0.009
+lr = 0.003
 # for i in range(9):
 #     print('lr=',lr)
 #     model = BB_model()
@@ -373,7 +373,7 @@ lr = 0.009
 #     PATH = f'./model_{lr}.pth'
 #     torch.save(model.state_dict(), PATH)
 model = BB_model()
-model.load_state_dict(torch.load('./weights/model_0.009_42_ver4.pth'))
+model.load_state_dict(torch.load('./weights/model_0.003_83.pth'))
 # load_path = 'model_0.009.pth'
 # model.load_state_dict(torch.load(load_path))
 # model.eval()
@@ -381,8 +381,8 @@ parameters = filter(lambda p: p.requires_grad, model.parameters())
 optimizer = torch.optim.Adam(parameters, lr)
 
 train_epocs(model, optimizer, train_dl, valid_dl, lr, epochs=20)
-PATH = f'./model_{lr}_ver4.pth'
-torch.save(model.state_dict(), PATH)
+# PATH = f'./model_{lr}_ver4.pth'
+# torch.save(model.state_dict(), PATH)
 # # update_optimizer(optimizer, 0.005)
 # # train_epocs(model, optimizer, train_dl, valid_dl, epochs=10)
 
